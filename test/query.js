@@ -721,6 +721,47 @@ describe('getJoin', function(){
     });
 
   });
+  describe("A function passed instead of an object", function() {
+    afterEach(cleanTables);
+    it("should be treated the same as the _apply option", function(done) {
+        var name = util.s8();
+        var Model = thinky.createModel(modelNames[0], {
+          id: String
+        });
+
+        var otherName = util.s8();
+        var OtherModel = thinky.createModel(modelNames[1], {
+          id: String,
+          otherId: String
+        });
+
+        Model.hasMany(OtherModel, "has", "id", "otherId");
+        OtherModel.belongsTo(Model, "belongsTo", "otherId", "id");
+
+        var values = {};
+        var otherValues = { };
+        var doc = new Model(values);
+        var otherDocs = [
+          new OtherModel(otherValues),
+          new OtherModel(otherValues),
+          new OtherModel(otherValues),
+          new OtherModel(otherValues),
+          new OtherModel(otherValues)
+        ];
+
+        doc.has = otherDocs;
+
+        doc.saveAll().then(function(result) {
+          Model.get(doc.id).getJoin({
+            has: function(s) { return s.limit(3) },
+          }).run().then(function (result) {
+            assert.equal(result.has.length, 3);
+            done();
+          }).error(done);
+        });
+
+    });
+  })
   describe("The _rel option", function() {
     afterEach(cleanTables);
     it("should allow the same join multiple times", function(done) {
