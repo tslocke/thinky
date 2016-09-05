@@ -11,6 +11,7 @@ var Promise = require('bluebird');
 var modelNameSet = {};
 modelNameSet[util.s8()] = true;
 modelNameSet[util.s8()] = true;
+modelNameSet[util.s8()] = true;
 var modelNames = Object.keys(modelNameSet);
 
 var cleanTables = function(done) {
@@ -804,6 +805,89 @@ describe('getJoin', function(){
         });
 
     });
+  })
+  describe("with joinScopes", function() {
+    var Group, Membership, User, group, users;
+
+    beforeEach(function(done) {
+      Group = thinky.createModel(modelNames[0], {
+        id: String,
+        name: String,
+      })
+
+      Membership = thinky.createModel(modelNames[1], {
+        id: String,
+        groupId: String,
+        userId: String
+      })
+      Group.hasMany(Membership, "memberships", "id", "groupId")
+
+      User = thinky.createModel(modelNames[2], {
+        id: String,
+        name: String
+      })
+      Membership.belongsTo(User, "user", "userId", "id")
+
+      Group.joinScope("members", "memberships", {
+        user: true,
+        _apply: x => x.map(g => g('user')),
+      })
+
+      users = [
+        new User({name: util.s8()}),
+        new User({name: util.s8()}),
+        new User({name: util.s8()})
+      ]
+
+      group = new Group({
+        name: util.s8(),
+        memberships: [
+          new Membership({user: users[0]}),
+          new Membership({user: users[1]}),
+          new Membership({user: users[2]})
+        ]
+      })
+
+      group.saveAll({memberships: {user: true}}).then(function(result) {
+        r.table(User.getTableName()).run().then(x => { 
+          util.sortById(users)
+          done()
+        })
+      }).error(done);
+    })
+    afterEach(cleanTables);
+
+    it("should be able to fetch related documents", function(done) {
+      Group.get(group.id).getJoin({members: true}).run().then(function(result) {
+        util.sortById(result.members);
+        assert.deepEqual(users, result.members);
+        done()
+      }).error(done);
+
+    });
+    it('should be able to fetch related documents from sequence', function(done) {
+      Group.filter({id: group.id}).getJoin({members: true}).run().then(function(result) {
+        util.sortById(result[0].members);
+        assert.deepEqual(users, result[0].members);
+        done()
+      }).error(done);
+    })
+    it('should support applying a function to the result of the join', function(done) {
+      Group.filter({id: group.id}).getJoin({members: x => x.limit(1)}).run().then(function(result) {
+        assert.deepEqual(1, result[0].members.length);
+        done()
+      }).error(done);
+    })
+
+    it('shoud support both pre and post functions', function(done) {
+      Group.filter({id: group.id}).getJoin({
+        members: { _applyPre: x => x.limit(1), _apply: x => x.pluck('name') }
+      }).run().then(function(result) {
+        assert.deepEqual(1, result[0].members.length);
+        done()
+      }).error(done);
+    })
+
   })
   describe("should not throw with missing keys", function() {
     afterEach(cleanTables);
